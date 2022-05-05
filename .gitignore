@@ -1,12 +1,8 @@
 # Sample folder
 /Samples
-/Test
 
 # Wav files
 *.wav
-
-# Test files
-test.sh
 
 # Executables
 !*.*

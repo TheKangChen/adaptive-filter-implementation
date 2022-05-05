@@ -18,27 +18,36 @@ int main(int argc, char *argv[]) {
     memset(&dsfinfo, 0, sizeof(dsfinfo));
 
     // parse commond line args
-    if (argc != 4) {
-        fprintf(stderr, "Usage: %s masked_signal.wav desired_signal.wav output_signal.wav", argv[0]);
+    if (argc != 5) {
+        fprintf(stderr, "Usage: %s masked_signal.wav desired_signal.wav output_signal.wav step_size\n", argv[0]);
         return -1;
     }
     
+    if (!atof(argv[4])) {
+        fprintf(stderr, "ERROR: input argument 5 needs to be float\n");
+        return -1;
+    }
+
     xfile = argv[1];
     dfile = argv[2];
     ofile = argv[3];
+    lp->miu = atof(argv[4]);
 
     // open files
     if ((xsndfile = sf_open(xfile, SFM_READ, &xsfinfo)) == NULL) {
         fprintf(stderr, "ERROR: failed to open file %s\n", xfile);
         return -1;
     }
+
     if ((dsndfile = sf_open(dfile, SFM_READ, &dsfinfo)) == NULL) {
         fprintf(stderr, "ERROR: failed to open file %s\n", dfile);
         return -1;
     }
 
-    printf("Frames: %lld, Channels: %d, Samplerate: %d, %s\n", xsfinfo.frames, xsfinfo.channels, xsfinfo.samplerate, xfile);
-    printf("Frames: %lld, Channels: %d, Samplerate: %d, %s\n", dsfinfo.frames, dsfinfo.channels, dsfinfo.samplerate, dfile);
+    if (debug) {
+        printf("Frames: %lld, Channels: %d, Samplerate: %d, %s\n", xsfinfo.frames, xsfinfo.channels, xsfinfo.samplerate, xfile);
+        printf("Frames: %lld, Channels: %d, Samplerate: %d, %s\n", dsfinfo.frames, dsfinfo.channels, dsfinfo.samplerate, dfile);
+    }
 
     p->channels = xsfinfo.channels;
     p->samplerate = xsfinfo.samplerate;
@@ -48,10 +57,12 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "ERROR: %s channel more than max allowed channel 1\n", xfile);
         return -1;
     }
+
     if (dsfinfo.channels != p->channels) {
         fprintf(stderr, "ERROR: %s channel number %d does not match file %s: %d\n", dfile, dsfinfo.channels, xfile, p->channels);
         return -1;
     }
+
     if (dsfinfo.samplerate != p->samplerate) {
         fprintf(stderr, "ERROR: %s sample rate %d does not match file %s: %d\n", dfile, dsfinfo.samplerate, xfile, p->samplerate);
         return -1;
@@ -93,7 +104,7 @@ int main(int argc, char *argv[]) {
     }
 
     /* filter signal */
-    lp->miu = 0.01f; // recommend start with 0.01f
+    // lp->miu = 0.01f; // recommend start with 0.01f
     for (int n=0; n<xlen; ++n) {
         lp->y[n] = 0.0;
 
@@ -130,6 +141,8 @@ int main(int argc, char *argv[]) {
     sf_close(xsndfile);
     sf_close(dsndfile);
     sf_close(osndfile);
+
+    printf("%s Exported\n", ofile);
 
     free(p->x);
 	free(p->d);
