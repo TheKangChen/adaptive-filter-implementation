@@ -7,30 +7,33 @@
 
 #define FILT_ORDER 128
 #define MAX_CHN 1
-#define debug 1
+#define debug 0
 
 typedef struct {
 	unsigned int channels;
 	unsigned int samplerate;
 	double *x; // input signal
     double *d; // desired signal
+} Buf;
+
+typedef struct {
+    float miu; // step size
     double *y; // filtered signal
     double *e; // error = d - y
     double *w; // filter coefficients
-} Buf;
+} LMS;
 
+void normalize(double *x, double *y, int numSamples);
 
 int main(int argc, char *argv[]) {
     char *xfile, *dfile, *ofile;
-    float miu = 0.01f;
     SNDFILE *xsndfile, *dsndfile, *osndfile;
 	SF_INFO xsfinfo, dsfinfo, osfinfo;
     Buf buf, *p = &buf;
-    // FILE *xfp, *rfp, *ofp;
+    LMS lms, *lp = &lms;
 
     memset(&xsfinfo, 0, sizeof(xsfinfo));
     memset(&dsfinfo, 0, sizeof(dsfinfo));
-    // memset(&osfinfo, 0, sizeof(osfinfo));
 
     // parse commond line args
     if (argc != 4) {
@@ -75,15 +78,16 @@ int main(int argc, char *argv[]) {
     // allocate memory for all datas
     p->x = (double *)malloc(xsfinfo.frames * xsfinfo.channels * sizeof(double));
     p->d = (double *)malloc(dsfinfo.frames * dsfinfo.channels * sizeof(double));
-    p->y = (double *)calloc(xsfinfo.frames * xsfinfo.channels, xsfinfo.frames * xsfinfo.channels * sizeof(double));
-    p->e = (double *)malloc(xsfinfo.frames * xsfinfo.channels * sizeof(double));
-    p->w = (double *)calloc(FILT_ORDER, FILT_ORDER * sizeof(double));
+
+    lp->y = (double *)calloc(xsfinfo.frames * xsfinfo.channels, xsfinfo.frames * xsfinfo.channels * sizeof(double));
+    lp->w = (double *)calloc(FILT_ORDER, FILT_ORDER * sizeof(double));
+    lp->e = (double *)malloc(xsfinfo.frames * xsfinfo.channels * sizeof(double));
 
     if (p->x == NULL) return -1;
     if (p->d == NULL) return -1;
-    if (p->y == NULL) return -1;
-    if (p->e == NULL) return -1;
-    if (p->w == NULL) return -1;
+    if (lp->y == NULL) return -1;
+    if (lp->w == NULL) return -1;
+    if (lp->e == NULL) return -1;
 
     // read input signal
     int xcount = sf_readf_double(xsndfile, p->x, xsfinfo.frames);
@@ -107,26 +111,30 @@ int main(int argc, char *argv[]) {
     }
 
     /* filter signal */
+    lp->miu = 0.01f; // recommend start with 0.01f
     for (int n=0; n<xlen; ++n) {
-        p->y[n] = 0.0;
+        lp->y[n] = 0.0;
 		// FIR filter
 		for (int k=0; k<FILT_ORDER; ++k) {
 			if ((n-k) >=0 && (n-k) <= xlen-1) {
-				p->y[n] += p->x[n-k] * p->w[k];
+				lp->y[n] += p->x[n-k] * lp->w[k];
 			} else {
-				p->y[n] += 0.0 * p->w[k];
+				lp->y[n] += 0.0 * lp->w[k];
             }
 		}
     
         // calculate error
-        p->e[n] = p->d[n] - p->y[n];
+        lp->e[n] = p->d[n] - lp->y[n];
 
         // update filter coefficients
         for (int k=0; k<FILT_ORDER-1; ++k) {
-            p->w[k+1] = p->w[k] + (miu * p->e[n] * p->x[k]);
+            lp->w[k+1] = lp->w[k] + (lp->miu * lp->e[n] * p->x[k]);
         }
-        if (debug) printf("y: %f\n", p->y[n]);
+        if (debug) printf("error: %f\n", lp->e[n]);
     }
+
+    /* normalize output */
+    // normalize(p->x, p->y, xsfinfo.frames * xsfinfo.channels);
 
     /* write to file */
     osfinfo.samplerate = 48000;
@@ -141,7 +149,7 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    int count = sf_write_double(osndfile, p->y, xsfinfo.frames * xsfinfo.channels);
+    int count = sf_write_double(osndfile, lp->e, xsfinfo.frames * xsfinfo.channels);
     if (count != xsfinfo.frames) {
 		fprintf(stderr, "ERROR: wrong num frames for %s: %d, xsfinfo: %lld\n", argv[3], count, xsfinfo.frames);
 		return -1;
@@ -150,29 +158,29 @@ int main(int argc, char *argv[]) {
     sf_close(xsndfile);
     sf_close(dsndfile);
     sf_close(osndfile);
+
     free(p->x);
 	free(p->d);
-	free(p->y);
-	free(p->e);
-	free(p->w);
+	free(lp->y);
+	free(lp->w);
+	free(lp->e);
 
     return 0;
 }
 
-/* What do we need?
-1. FIR filter Order 128
-y = sum(ax + ax-1 + ax-2..... ax-127)
-nested for loop O(M * N)
+void normalize(double *x, double *y, int numSamples) {
+    // get max value of array x & y
+    double max_x = 0.0;
+    double max_y = 0.0;
+    for (int i=0; i<numSamples; ++i) {
+        max_x = fabs(x[i]) > max_x ? fabs(x[i]) : max_x;
+        max_y = fabs(y[i]) > max_y ? fabs(y[i]) : max_y;
+    }
+    printf("x max value: %f\n", max_x);
+    printf("y max value: %f\n", max_y);
 
-2. weights (filter coefficients) initialize to random
-
-3. compute error signal (output signal)
-error = desired signal - y
-
-4. Update filter coefficients
-h[k+1] = h[k] + miu * error[k] * x[k]
-
-output y sig
-
-repeat step 3 and 4
-*/
+    // normalize
+    for (int i=0; i<numSamples; ++i) {
+        y[i] = y[i] * ((double)max_x / (double)max_y);
+    }
+}

@@ -1,8 +1,15 @@
 # Sample folder
 /Samples
+/Test
 
 # wav files
 *.wav
+
+# test files
+test.sh
+
+# executables
+!*.*
 
 # Prerequisites
 *.d
