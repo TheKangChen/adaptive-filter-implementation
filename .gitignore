@@ -2,13 +2,13 @@
 /Samples
 /Test
 
-# wav files
+# Wav files
 *.wav
 
-# test files
+# Test files
 test.sh
 
-# executables
+# Executables
 !*.*
 
 # Prerequisites
@@ -40,7 +40,6 @@ test.sh
 *.so
 *.so.*
 *.dylib
-.DS_Store
 
 # Executables
 *.exe
@@ -64,3 +63,7 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+# Other
+.DS_Store
+.vscode/
